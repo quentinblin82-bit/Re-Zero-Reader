@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#14141e" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<title>Re:Zero WN Reader</title>
+<style>
+  :root {
+    --bg: #14141e;
+    --bg-elevated: #1d1d2a;
+    --text: #e8e6f0;
+    --text-dim: #9b97ab;
+    --accent: #9b6edc;
+    --border: #2c2c3c;
+    --font-size: 18px;
+    --line-height: 1.75;
+    --content-font: Georgia, "Times New Roman", serif;
+  }
+  [data-theme="sepia"] {
+    --bg: #f3ead9;
+    --bg-elevated: #ece0c9;
+    --text: #2c2417;
+    --text-dim: #6b6151;
+    --accent: #8a5a2b;
+    --border: #d9cba9;
+  }
+  [data-theme="light"] {
+    --bg: #ffffff;
+    --bg-elevated: #f2f2f5;
+    --text: #1a1a1f;
+    --text-dim: #67667a;
+    --accent: #6a3fb8;
+    --border: #e1e1e8;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    height: 100%;
+    overscroll-behavior-y: none;
+  }
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  header.topbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px;
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 5;
+  }
+  header.topbar button.icon-btn {
+    background: none; border: none; color: var(--text);
+    font-size: 20px; padding: 6px 10px; cursor: pointer; border-radius: 8px;
+  }
+  header.topbar button.icon-btn:active { background: var(--border); }
+  header.topbar .title {
+    flex: 1; font-weight: 600; font-size: 15px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  main { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+  /* ---- Vue Bibliothèque / TOC ---- */
+  #view-library { padding: 8px 0 40px; }
+  .arc-block { margin: 0 0 18px; }
+  .arc-title {
+    padding: 10px 16px 6px;
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--accent); font-weight: 700;
+  }
+  .chapter-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .chapter-row:active { background: var(--bg-elevated); }
+  .chapter-row .ch-name { font-size: 15px; flex: 1; padding-right: 10px; }
+  .chapter-row .ch-status { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+  .chapter-row.read .ch-name { color: var(--text-dim); }
+  .chapter-row.is-last { box-shadow: inset 3px 0 0 var(--accent); }
+
+  #search-bar {
+    margin: 10px 16px; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg-elevated); color: var(--text);
+    width: calc(100% - 32px); font-size: 14px;
+  }
+
+  .continue-card {
+    margin: 12px 16px; padding: 14px;
+    background: var(--bg-elevated); border-radius: 14px;
+    border: 1px solid var(--border);
+  }
+  .continue-card .label { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+  .continue-card .name { font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+  .continue-card button {
+    background: var(--accent); color: #fff; border: none;
+    padding: 9px 16px; border-radius: 9px; font-size: 14px; font-weight: 600;
+  }
+
+  /* ---- Vue lecture ---- */
+  #view-reader { display: none; }
+  #reader-content {
+    max-width: 700px; margin: 0 auto;
+    padding: 24px 20px 100px;
+    font-family: var(--content-font);
+    font-size: var(--font-size);
+    line-height: var(--line-height);
+  }
+  #reader-content h1 {
+    font-size: 1.3em; margin-bottom: 4px; font-family: -apple-system, sans-serif;
+  }
+  #reader-content .chapter-meta {
+    font-size: 13px; color: var(--text-dim); margin-bottom: 24px; font-family: -apple-system, sans-serif;
+  }
+  #reader-content p { margin: 0 0 1.1em; }
+  #reader-content img { max-width: 100%; border-radius: 8px; }
+
+  .state-msg {
+    padding: 60px 24px; text-align: center; color: var(--text-dim); font-size: 14px;
+  }
+  .spinner {
+    width: 28px; height: 28px; margin: 0 auto 14px;
+    border: 3px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Barre de navigation bas de page (lecture) */
+  .reader-nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    display: flex; gap: 8px; padding: 10px 14px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    background: var(--bg-elevated); border-top: 1px solid var(--border);
+  }
+  .reader-nav button {
+    flex: 1; padding: 12px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 14px;
+  }
+  .reader-nav button:disabled { opacity: 0.35; }
+  .reader-nav button.primary { background: var(--accent); color: #fff; border: none; }
+
+  /* Panneau réglages */
+  #settings-sheet {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: var(--bg-elevated); border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0; padding: 16px 18px 24px;
+    transform: translateY(100%); transition: transform 0.25s ease;
+    z-index: 20;
+  }
+  #settings-sheet.open { transform: translateY(0); }
+  .settings-row { display: flex; align-items: center; justify-content: space-between; margin: 14px 0; }
+  .settings-row .row-label { font-size: 14px; }
+  .seg-control { display: flex; gap: 6px; }
+  .seg-control button {
+    padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 13px;
+  }
+  .seg-control button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 15; display: none; }
+  #overlay.show { display: block; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <button class="icon-btn" id="btn-back" style="display:none;">&#8592;</button>
+    <div class="title" id="header-title">Re:Zero — Witch Cult Translations</div>
+    <button class="icon-btn" id="btn-settings">&#9881;</button>
+  </header>
+
+  <main>
+    <div id="view-library"></div>
+    <div id="view-reader">
+      <div id="reader-content"></div>
+    </div>
+  </main>
+
+  <div class="reader-nav" id="reader-nav" style="display:none;">
+    <button id="btn-prev">&#8592; Précédent</button>
+    <button id="btn-toc" class="primary">Sommaire</button>
+    <button id="btn-next">Suivant &#8594;</button>
+  </div>
+</div>
+
+<div id="overlay"></div>
+<div id="settings-sheet">
+  <div class="settings-row">
+    <span class="row-label">Thème</span>
+    <div class="seg-control" id="theme-control">
+      <button data-theme="dark">Sombre</button>
+      <button data-theme="sepia">Sépia</button>
+      <button data-theme="light">Clair</button>
+    </div>
+  </div>
+  <div class="settings-row">
+    <span class="row-label">Taille du texte</span>
+    <div class="seg-control">
+      <button id="font-minus">A-</button>
+      <button id="font-plus">A+</button>
+    </div>
+  </div>
+  <div class="settings-row">
+    <span class="row-label">Réinitialiser la progression</span>
+    <div class="seg-control"><button id="btn-reset">Effacer</button></div>
+  </div>
+</div>
+
+<script>
+/* ===================== CONFIGURATION ===================== */
+// Remplace cette URL par celle de TON Worker une fois déployé (voir README.md)
+const PROXY_BASE = "https://TON-WORKER.workers.dev/?url=";
+const TOC_URL = "https://witchculttranslation.com/table-of-content/";
+
+const els = {
+  library: document.getElementById("view-library"),
+  reader: document.getElementById("view-reader"),
+  readerContent: document.getElementById("reader-content"),
+  readerNav: document.getElementById("reader-nav"),
+  headerTitle: document.getElementById("header-title"),
+  btnBack: document.getElementById("btn-back"),
+  btnSettings: document.getElementById("btn-settings"),
+  btnPrev: document.getElementById("btn-prev"),
+  btnNext: document.getElementById("btn-next"),
+  btnToc: document.getElementById("btn-toc"),
+  overlay: document.getElementById("overlay"),
+  settingsSheet: document.getElementById("settings-sheet"),
+};
+
+const store = {
+  get(key, fallback) {
+    try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
+    catch { return fallback; }
+  },
+  set(key, val) { localStorage.setItem(key, JSON.stringify(val)); },
+};
+
+let chapters = [];      // liste plate { arc, title, url }
+let lastPosition = store.get("lastPosition", null); // url du dernier chapitre lu
+let readSet = new Set(store.get("readChapters", []));
+
+/* ===================== RÉGLAGES (thème / police) ===================== */
+function applySettings() {
+  const theme = store.get("theme", "dark");
+  const fontSize = store.get("fontSize", 18);
+  document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.style.setProperty("--font-size", fontSize + "px");
+  document.querySelectorAll("#theme-control button").forEach((b) =>
+    b.classList.toggle("active", b.dataset.theme === theme)
+  );
+}
+document.getElementById("theme-control").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  store.set("theme", btn.dataset.theme);
+  applySettings();
+});
+document.getElementById("font-plus").onclick = () => {
+  store.set("fontSize", Math.min(28, store.get("fontSize", 18) + 1));
+  applySettings();
+};
+document.getElementById("font-minus").onclick = () => {
+  store.set("fontSize", Math.max(14, store.get("fontSize", 18) - 1));
+  applySettings();
+};
+document.getElementById("btn-reset").onclick = () => {
+  if (confirm("Effacer toute la progression de lecture ?")) {
+    localStorage.removeItem("lastPosition");
+    localStorage.removeItem("readChapters");
+    readSet = new Set();
+    lastPosition = null;
+    renderLibrary();
+    toggleSettings(false);
+  }
+};
+function toggleSettings(open) {
+  els.settingsSheet.classList.toggle("open", open);
+  els.overlay.classList.toggle("show", open);
+}
+els.btnSettings.onclick = () => toggleSettings(true);
+els.overlay.onclick = () => toggleSettings(false);
+
+/* ===================== RÉCUPÉRATION VIA PROXY ===================== */
+async function fetchViaProxy(url) {
+  const res = await fetch(PROXY_BASE + encodeURIComponent(url));
+  if (!res.ok) throw new Error("Erreur réseau (" + res.status + ")");
+  return res.text();
+}
+
+/* ===================== PARSING DE LA TABLE DES MATIÈRES ===================== */
+async function loadTableOfContents() {
+  const cached = store.get("tocCache", null);
+  const cachedAt = store.get("tocCacheAt", 0);
+  const FRESH_MS = 1000 * 60 * 60 * 12; // 12h
+  if (cached && Date.now() - cachedAt < FRESH_MS) {
+    chapters = cached;
+    return;
+  }
+  const html = await fetchViaProxy(TOC_URL);
+  const doc = new DOMParser().parseFromString(html, "text/html");
+
+  // Le contenu utile est dans la zone d'article ; on parcourt ses enfants
+  // dans l'ordre du document pour reconstituer Arc -> Chapitres.
+  const content =
+    doc.querySelector(".entry-content") ||
+    doc.querySelector("article") ||
+    doc.body;
+
+  const result = [];
+  let currentArc = "Sommaire";
+  const walker = content.querySelectorAll("h1, h2, h3, ul, ol");
+  walker.forEach((node) => {
+    if (/^H[1-3]$/.test(node.tagName)) {
+      const text = node.textContent.trim();
+      if (text && text.length < 80) currentArc = text;
+    } else {
+      node.querySelectorAll("a[href]").forEach((a) => {
+        const href = a.getAttribute("href");
+        const title = a.textContent.trim();
+        if (!href || !title) return;
+        if (href.includes("#")) return;
+        result.push({ arc: currentArc, title, url: href });
+      });
+    }
+  });
+
+  chapters = result;
+  store.set("tocCache", result);
+  store.set("tocCacheAt", Date.now());
+}
+
+/* ===================== EXTRACTION DU CONTENU D'UN CHAPITRE ===================== */
+const CONTENT_SELECTORS = [
+  ".entry-content",
+  ".post-content",
+  "article .post-body",
+  "main article",
+  "article",
+];
+
+function extractChapter(html, url) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  let container = null;
+  for (const sel of CONTENT_SELECTORS) {
+    const el = doc.querySelector(sel);
+    if (el && el.querySelectorAll("p").length >= 3) { container = el; break; }
+  }
+  if (!container) {
+    // Repli : on prend le bloc qui contient le plus de texte dans des <p>
+    let best = null, bestLen = 0;
+    doc.querySelectorAll("div, article, section").forEach((el) => {
+      const ps = el.querySelectorAll("p");
+      if (ps.length < 3) return;
+      const len = el.textContent.length;
+      if (len > bestLen) { bestLen = len; best = el; }
+    });
+    container = best;
+  }
+  if (!container) return null;
+
+  const clone = container.cloneNode(true);
+  // Nettoyage : on retire les éléments qui ne font pas partie du texte du chapitre
+  clone.querySelectorAll(
+    "script, style, .sharedaddy, .jp-relatedposts, .comments-area, nav, .post-navigation"
+  ).forEach((el) => el.remove());
+
+  const titleEl = doc.querySelector("h1.entry-title, h1") ;
+  const title = titleEl ? titleEl.textContent.trim() : "";
+
+  return { title, html: clone.innerHTML };
+}
+
+/* ===================== VUE BIBLIOTHÈQUE ===================== */
+function renderLibrary() {
+  els.headerTitle.textContent = "Re:Zero — Witch Cult Translations";
+  els.btnBack.style.display = "none";
+  els.readerNav.style.display = "none";
+  els.reader.style.display = "none";
+  els.library.style.display = "block";
+
+  let html = "";
+
+  if (lastPosition) {
+    const ch = chapters.find((c) => c.url === lastPosition);
+    if (ch) {
+      html += `
+        <div class="continue-card">
+          <div class="label">Reprendre la lecture</div>
+          <div class="name">${escapeHtml(ch.title)}</div>
+          <button id="btn-continue">Continuer &#8594;</button>
+        </div>`;
+    }
+  }
+
+  html += `<input id="search-bar" placeholder="Rechercher un chapitre ou un arc…" />`;
+  html += `<div id="chapters-list"></div>`;
+  els.library.innerHTML = html;
+
+  document.getElementById("btn-continue")?.addEventListener("click", () => openChapter(lastPosition));
+  document.getElementById("search-bar").addEventListener("input", (e) => renderChapterList(e.target.value));
+
+  renderChapterList("");
+}
+
+function renderChapterList(filter) {
+  const listEl = document.getElementById("chapters-list");
+  const f = filter.trim().toLowerCase();
+  const groups = {};
+  chapters.forEach((c) => {
+    if (f && !c.title.toLowerCase().includes(f) && !c.arc.toLowerCase().includes(f)) return;
+    (groups[c.arc] = groups[c.arc] || []).push(c);
+  });
+
+  let html = "";
+  for (const [arc, list] of Object.entries(groups)) {
+    html += `<div class="arc-block"><div class="arc-title">${escapeHtml(arc)}</div>`;
+    list.forEach((c) => {
+      const isRead = readSet.has(c.url);
+      const isLast = c.url === lastPosition;
+      html += `
+        <div class="chapter-row ${isRead ? "read" : ""} ${isLast ? "is-last" : ""}" data-url="${encodeURIComponent(c.url)}">
+          <span class="ch-name">${escapeHtml(c.title)}</span>
+          <span class="ch-status">${isRead ? "Lu" : ""}</span>
+        </div>`;
+    });
+    html += `</div>`;
+  }
+  listEl.innerHTML = html || `<div class="state-msg">Aucun résultat.</div>`;
+
+  listEl.querySelectorAll(".chapter-row").forEach((row) => {
+    row.addEventListener("click", () => openChapter(decodeURIComponent(row.dataset.url)));
+  });
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* ===================== VUE LECTURE ===================== */
+async function openChapter(url) {
+  // Liens PDF ou hébergés ailleurs (Mega, etc.) : on ouvre dans le navigateur,
+  // l'extraction de texte n'a pas de sens pour ces formats.
+  if (/\.pdf(\?|$)/i.test(url) || url.includes("mega.nz")) {
+    window.open(url, "_blank");
+    return;
+  }
+
+  els.library.style.display = "none";
+  els.reader.style.display = "block";
+  els.readerNav.style.display = "flex";
+  els.btnBack.style.display = "inline-block";
+  els.readerContent.innerHTML = `<div class="state-msg"><div class="spinner"></div>Chargement du chapitre…</div>`;
+  window.scrollTo(0, 0);
+
+  try {
+    const html = await fetchViaProxy(url);
+    const chapter = extractChapter(html, url);
+    if (!chapter) {
+      els.readerContent.innerHTML = `<div class="state-msg">Impossible d'extraire le texte de ce chapitre.<br><a href="${url}" target="_blank">Ouvrir la page d'origine</a></div>`;
+      return;
+    }
+    els.readerContent.innerHTML = `
+      <h1>${escapeHtml(chapter.title)}</h1>
+      <div class="chapter-meta"><a href="${url}" target="_blank" style="color:inherit;">Voir la page d'origine ↗</a></div>
+      ${chapter.html}
+    `;
+    els.headerTitle.textContent = chapter.title || "Chapitre";
+
+    lastPosition = url;
+    readSet.add(url);
+    store.set("lastPosition", url);
+    store.set("readChapters", Array.from(readSet));
+    updateNavButtons(url);
+  } catch (err) {
+    els.readerContent.innerHTML = `<div class="state-msg">Erreur de chargement : ${escapeHtml(err.message)}<br><br><button onclick="openChapter('${url}')">Réessayer</button></div>`;
+  }
+}
+
+function updateNavButtons(currentUrl) {
+  const idx = chapters.findIndex((c) => c.url === currentUrl);
+  els.btnPrev.disabled = idx <= 0;
+  els.btnNext.disabled = idx === -1 || idx >= chapters.length - 1;
+  els.btnPrev.onclick = () => idx > 0 && openChapter(chapters[idx - 1].url);
+  els.btnNext.onclick = () => idx < chapters.length - 1 && openChapter(chapters[idx + 1].url);
+}
+
+els.btnToc.onclick = renderLibrary;
+els.btnBack.onclick = renderLibrary;
+
+/* ===================== INIT ===================== */
+async function init() {
+  applySettings();
+  els.library.innerHTML = `<div class="state-msg"><div class="spinner"></div>Chargement du sommaire…</div>`;
+  try {
+    await loadTableOfContents();
+    renderLibrary();
+  } catch (err) {
+    els.library.innerHTML = `<div class="state-msg">Impossible de charger le sommaire : ${escapeHtml(err.message)}<br><br>Vérifie que PROXY_BASE est bien configuré dans index.html.<br><br><button onclick="location.reload()">Réessayer</button></div>`;
+  }
+}
+init();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
